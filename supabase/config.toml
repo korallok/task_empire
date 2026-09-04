@@ -1,0 +1,7 @@
+project_id = "task_empire"
+
+[auth]
+enable_anonymous_sign_ins = true
+
+[functions.complete_task_secure]
+verify_jwt = true
