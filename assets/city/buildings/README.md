@@ -13,6 +13,11 @@ market_level_3.png
 town_hall_level_1.png
 town_hall_level_2.png
 town_hall_level_3.png
+house_level_1.png
+library_level_1.png
+workshop_level_1.png
+tower_level_1.png
+garden_level_1.png
 ```
 
 Lossless `.webp` files with the same stems take priority over `.png`.
@@ -22,6 +27,7 @@ Every render must:
 - use a square transparent canvas;
 - share the same orthographic camera and light direction;
 - keep the building base at the same pixel anchor;
+- keep the logical footprint aligned to the shared Blender unit grid;
 - include consistent transparent padding;
 - include its soft ground shadow.
 

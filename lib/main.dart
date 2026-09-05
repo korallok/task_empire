@@ -66,7 +66,7 @@ class _AuthenticatedAppBootstrapState extends State<AuthenticatedAppBootstrap> {
             ),
           );
         }
-        return CalendarStrategyApp(supabase: widget.supabase);
+        return TaskEmpireApp(supabase: widget.supabase);
       },
     );
   }

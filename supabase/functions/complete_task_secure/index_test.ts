@@ -1,6 +1,7 @@
 import {
   extractOutputText,
   handleRequest,
+  legacyDifficultyFor,
   validateAssessment,
 } from "./index.ts";
 
@@ -10,11 +11,14 @@ function assert(condition: unknown, message: string): asserts condition {
 
 Deno.test("validateAssessment accepts a strict valid assessment", () => {
   const result = validateAssessment({
-    approvedDifficulty: "B",
+    approvedDifficulty: "hard",
     reason: "Требуется несколько часов сосредоточенной работы.",
   });
 
-  assert(result.approvedDifficulty === "B", "difficulty should be preserved");
+  assert(
+    result.approvedDifficulty === "hard",
+    "difficulty should be preserved",
+  );
   assert(result.reason.startsWith("Требуется"), "reason should be preserved");
 });
 
@@ -22,7 +26,8 @@ Deno.test("validateAssessment rejects unknown ranks and empty reasons", () => {
   for (
     const value of [
       { approvedDifficulty: "X", reason: "Reason" },
-      { approvedDifficulty: "E", reason: "   " },
+      { approvedDifficulty: "E", reason: "Legacy rank" },
+      { approvedDifficulty: "easy", reason: "   " },
     ]
   ) {
     let didThrow = false;
@@ -33,6 +38,12 @@ Deno.test("validateAssessment rejects unknown ranks and empty reasons", () => {
     }
     assert(didThrow, "invalid assessment should throw");
   }
+});
+
+Deno.test("legacy response ranks remain parseable by the old client", () => {
+  assert(legacyDifficultyFor("easy") === "E", "easy should map to E");
+  assert(legacyDifficultyFor("normal") === "C", "normal should map to C");
+  assert(legacyDifficultyFor("hard") === "A", "hard should map to A");
 });
 
 Deno.test("extractOutputText supports nested Responses API output", () => {

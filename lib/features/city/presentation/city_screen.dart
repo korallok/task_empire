@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:task_empire/core/theme/app_theme.dart';
@@ -17,274 +15,40 @@ class CityScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocListener<CityBloc, CityState>(
       listenWhen: (previous, current) {
-        if (!isActive) return false;
-        final actionOpened =
-            previous is! CityActionRequired && current is CityActionRequired;
-        final hasFeedback = current is CityDisplay && current.feedback != null;
-        return actionOpened || hasFeedback;
+        if (!isActive || current is! CityDisplay || current.feedback == null) {
+          return false;
+        }
+        return previous is! CityDisplay ||
+            previous.feedback?.id != current.feedback?.id;
       },
       listener: (context, state) {
-        if (state is CityActionRequired) {
-          unawaited(_openTileAction(context, state));
-        }
-        if (state case CityDisplay(:final feedback?)) {
-          final colors = Theme.of(context).colorScheme;
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(
-              SnackBar(
-                content: Text(feedback.message),
-                backgroundColor: feedback.isError
-                    ? colors.error
-                    : colors.inverseSurface,
-              ),
-            );
-        }
+        final feedback = (state as CityDisplay).feedback!;
+        final colors = Theme.of(context).colorScheme;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(feedback.message),
+              backgroundColor: feedback.isError
+                  ? colors.error
+                  : colors.inverseSurface,
+            ),
+          );
       },
       child: BlocBuilder<CityBloc, CityState>(
         builder: (context, state) {
           return Scaffold(
             backgroundColor: Colors.transparent,
-            body: SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  _CityHero(state: state),
-                  Expanded(child: _CityBody(state: state)),
-                ],
-              ),
-            ),
+            body: SafeArea(bottom: false, child: _CityContent(state: state)),
           );
         },
       ),
     );
   }
-
-  Future<void> _openTileAction(
-    BuildContext context,
-    CityActionRequired state,
-  ) async {
-    final building = state.building;
-    if (building == null) {
-      final selectedType = await showModalBottomSheet<CityBuildingType>(
-        context: context,
-        useSafeArea: true,
-        showDragHandle: false,
-        backgroundColor: Colors.transparent,
-        barrierColor: AppColors.forest950.withValues(alpha: 0.58),
-        builder: (_) => _CityShopSheet(data: state.data, tile: state.tile),
-      );
-      if (!context.mounted) return;
-
-      context.read<CityBloc>().add(
-        selectedType == null
-            ? const CityActionDismissed()
-            : CityBuildRequested(type: selectedType, tile: state.tile),
-      );
-      return;
-    }
-
-    final shouldUpgrade = await showDialog<bool>(
-      context: context,
-      builder: (_) => _BuildingDialog(
-        building: building,
-        availableGold: state.data.profile.gold,
-      ),
-    );
-    if (!context.mounted) return;
-
-    context.read<CityBloc>().add(
-      shouldUpgrade == true
-          ? CityUpgradeRequested(building.id)
-          : const CityActionDismissed(),
-    );
-  }
 }
 
-class _CityHero extends StatelessWidget {
-  const _CityHero({required this.state});
-
-  final CityState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final profile = state.data?.profile;
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      padding: const EdgeInsets.fromLTRB(18, 17, 12, 16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF244E43), AppColors.forest950],
-        ),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x32153B33),
-            blurRadius: 26,
-            offset: Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: const BoxDecoration(
-                  gradient: AppColors.goldGradient,
-                  borderRadius: BorderRadius.all(Radius.circular(17)),
-                ),
-                child: const Icon(
-                  Icons.location_city_rounded,
-                  color: AppColors.forest950,
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ВЛАДЕНИЯ',
-                      style: TextStyle(
-                        color: AppColors.gold400,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.7,
-                      ),
-                    ),
-                    Text(
-                      'Мой город',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    Text(
-                      'Развивайте империю силой выполненных задач',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white60, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Обновить город',
-                onPressed: state is CityDisplay
-                    ? () => context.read<CityBloc>().add(
-                        const CityRefreshRequested(),
-                      )
-                    : null,
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.08),
-                  foregroundColor: Colors.white,
-                  disabledForegroundColor: Colors.white24,
-                ),
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _CityHeroStat(
-                  icon: Icons.monetization_on_rounded,
-                  label: 'Золото',
-                  value: profile == null ? '—' : '${profile.gold}',
-                  color: AppColors.gold400,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _CityHeroStat(
-                  icon: Icons.auto_graph_rounded,
-                  label: 'Рост',
-                  value: profile == null ? '—' : '${profile.prosperity}',
-                  color: const Color(0xFF7FD5AA),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _CityHeroStat(
-                  icon: Icons.schedule_rounded,
-                  label: 'В час',
-                  value: profile == null ? '—' : '+${profile.incomePerHour}',
-                  color: const Color(0xFF8BC7EA),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CityHeroStat extends StatelessWidget {
-  const _CityHeroStat({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 19),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white54, fontSize: 9),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CityBody extends StatelessWidget {
-  const _CityBody({required this.state});
+class _CityContent extends StatelessWidget {
+  const _CityContent({required this.state});
 
   final CityState state;
 
@@ -298,103 +62,87 @@ class _CityBody extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final display = state is CityDisplay ? state as CityDisplay : null;
+    final compactNavigation = MediaQuery.sizeOf(context).width < 900;
     return Stack(
       children: [
-        RefreshIndicator(
-          onRefresh: () => _refresh(context),
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.paper.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0x140E2924)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.touch_app_rounded,
-                          size: 18,
-                          color: AppColors.forest700,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Двигайте город одним пальцем, масштабируйте двумя. Коснитесь участка или здания для действия.',
-                            style: TextStyle(
-                              color: AppColors.mutedInk,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Container(
-                  margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0xFFDCEBDD), Color(0xFFC8D8CC)],
-                    ),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: const Color(0x243F9373)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x1F153B33),
-                        blurRadius: 20,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Stack(
-                    children: [
-                      const Positioned(
-                        right: -50,
-                        top: -54,
-                        child: _CityBackdropOrb(size: 180),
-                      ),
-                      IsometricCityView(
-                        buildings: data.buildings,
-                        onTileTap: (tile) =>
-                            context.read<CityBloc>().add(CityTileTapped(tile)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+        Positioned.fill(
+          child: Container(
+            key: const ValueKey('city-scene-panel'),
+            margin: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFDCECDD), Color(0xFFBFD4C4)],
+              ),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: const Color(0x263F9373)),
+              boxShadow: const [AppShadows.elevated],
+            ),
+            child: IsometricCityView(
+              city: data.city,
+              buildings: data.buildings,
+              preview: state.preview,
+              selectedBuildingId: state.selectedBuildingId,
+              selectedTile: state.selectedTile,
+              showGrid: state.mode != CityMode.view,
+              onTileTap: (tile) =>
+                  context.read<CityBloc>().add(CityTileTapped(tile)),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 20,
+          top: 18,
+          right: 76,
+          child: _CityHeader(state: state, data: data),
+        ),
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: compactNavigation ? 94 : 18,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: AnimatedSwitcher(
+                duration: AppMotion.quick,
+                child: _bottomPanel(context, display, data),
+              ),
             ),
           ),
         ),
         if (state is CityLoading)
-          const Align(
-            alignment: Alignment.topCenter,
+          const Positioned(
+            left: 24,
+            right: 80,
+            top: 16,
             child: LinearProgressIndicator(minHeight: 2),
           ),
         if (state case CityOperationInProgress(:final message)) ...[
-          const ModalBarrier(dismissible: false, color: Color(0x33000000)),
+          const Positioned.fill(
+            child: ModalBarrier(dismissible: false, color: Color(0x3D0E2924)),
+          ),
           Center(
-            child: Card(
+            child: Material(
+              color: AppColors.paper,
+              borderRadius: BorderRadius.circular(22),
+              elevation: 8,
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 18,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(width: 16),
+                    const SizedBox.square(
+                      dimension: 24,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                    const SizedBox(width: 14),
                     Text(message),
                   ],
                 ),
@@ -406,468 +154,745 @@ class _CityBody extends StatelessWidget {
     );
   }
 
-  Future<void> _refresh(BuildContext context) async {
-    final bloc = context.read<CityBloc>();
-    if (bloc.state is! CityDisplay) return;
-
-    bloc.add(const CityRefreshRequested());
-    try {
-      await bloc.stream
-          .firstWhere((state) => state is CityDisplay || state is CityFailure)
-          .timeout(const Duration(seconds: 20));
-    } on TimeoutException {
-      // The active request remains owned by the BLoC.
+  Widget _bottomPanel(
+    BuildContext context,
+    CityDisplay? display,
+    CityStateData data,
+  ) {
+    if (display == null) {
+      return const SizedBox.shrink(key: ValueKey('city-loading-controls'));
     }
+    final preview = display.preview;
+    if (preview != null) {
+      return _PlacementPanel(
+        key: ValueKey('city-mode-${display.mode.name}'),
+        mode: display.mode,
+        preview: preview,
+      );
+    }
+    if (display.mode == CityMode.edit) {
+      return _EditPanel(
+        key: const ValueKey('city-mode-edit'),
+        data: data,
+        selectedBuilding: display.selectedBuilding,
+      );
+    }
+    final building = display.selectedBuilding;
+    if (building != null) {
+      return _BuildingInfoPanel(
+        key: const ValueKey('city-building-info'),
+        building: building,
+      );
+    }
+    return const _CityHint(key: ValueKey('city-mode-view'));
   }
 }
 
-class _CityBackdropOrb extends StatelessWidget {
-  const _CityBackdropOrb({required this.size});
+class _CityHeader extends StatelessWidget {
+  const _CityHeader({required this.state, required this.data});
 
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Color(0x26FFFFFF),
-        shape: BoxShape.circle,
-      ),
-    );
-  }
-}
-
-class _CityShopSheet extends StatelessWidget {
-  const _CityShopSheet({required this.data, required this.tile});
-
+  final CityState state;
   final CityStateData data;
-  final CityTileCoordinate tile;
 
   @override
   Widget build(BuildContext context) {
-    final items = [
-      data.catalogItem(CityBuildingType.market),
-      data.catalogItem(CityBuildingType.townHall),
-    ];
-
+    final canInteract = state is CityDisplay;
+    final inViewMode = state.mode == CityMode.view;
     return Material(
-      color: AppColors.paper,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-      clipBehavior: Clip.antiAlias,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD1C9BA),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: const BoxDecoration(
-                      gradient: AppColors.goldGradient,
-                      borderRadius: BorderRadius.all(Radius.circular(16)),
-                    ),
-                    child: const Icon(
-                      Icons.architecture_rounded,
-                      color: AppColors.forest950,
-                    ),
-                  ),
-                  const SizedBox(width: 13),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'АРХИТЕКТУРНОЕ БЮРО',
-                          style: TextStyle(
-                            color: AppColors.gold600,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.3,
-                          ),
-                        ),
-                        Text(
-                          'Выберите постройку',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        Text(
-                          'Участок ${tile.x + 1} · ${tile.y + 1}',
-                          style: const TextStyle(
-                            color: AppColors.mutedInk,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 11,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFEBC5),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.monetization_on_rounded,
-                          size: 17,
-                          color: AppColors.gold600,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          '${data.profile.gold}',
-                          style: const TextStyle(
-                            color: AppColors.forest900,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              for (final item in items)
-                _ShopItem(
-                  item: item,
-                  availableGold: data.profile.gold,
-                  onSelected: () => Navigator.pop(context, item.type),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ShopItem extends StatelessWidget {
-  const _ShopItem({
-    required this.item,
-    required this.availableGold,
-    required this.onSelected,
-  });
-
-  final CityCatalogItem item;
-  final int availableGold;
-  final VoidCallback onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final canAfford = availableGold >= item.buildPrice;
-    final icon = item.type == CityBuildingType.market
-        ? Icons.storefront_rounded
-        : Icons.account_balance_rounded;
-
-    return Opacity(
-      opacity: canAfford ? 1 : 0.62,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: canAfford
-                ? const Color(0x253F9373)
-                : const Color(0x1F776F63),
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: canAfford ? onSelected : null,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
+      color: AppColors.forest950.withValues(alpha: 0.94),
+      borderRadius: BorderRadius.circular(22),
+      elevation: 4,
+      shadowColor: AppColors.forest950.withValues(alpha: 0.24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.mint200,
-                    borderRadius: BorderRadius.circular(15),
+                  width: 38,
+                  height: 38,
+                  decoration: const BoxDecoration(
+                    gradient: AppColors.goldGradient,
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
                   ),
-                  child: Icon(icon, color: AppColors.forest700),
+                  child: const Icon(
+                    Icons.location_city_rounded,
+                    color: AppColors.forest950,
+                    size: 21,
+                  ),
                 ),
-                const SizedBox(width: 13),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const Text(
+                        'МОЙ ГОРОД',
+                        style: TextStyle(
+                          color: AppColors.gold400,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.25,
+                        ),
+                      ),
                       Text(
-                        item.type.displayName,
+                        state.mode == CityMode.view
+                            ? 'Город ${data.city.level} уровня'
+                            : 'Планировка города',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 15,
+                          color: Colors.white,
+                          fontSize: 16,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 4,
-                        children: [
-                          _ShopMetric(
-                            icon: Icons.monetization_on_rounded,
-                            text: '${item.buildPrice}',
-                            color: AppColors.gold600,
-                          ),
-                          _ShopMetric(
-                            icon: Icons.schedule_rounded,
-                            text: '+${item.incomePerHour}/ч',
-                            color: AppColors.forest700,
-                          ),
-                          _ShopMetric(
-                            icon: Icons.auto_graph_rounded,
-                            text: '+${item.prosperity}',
-                            color: const Color(0xFF3C7B82),
-                          ),
-                        ],
-                      ),
-                      if (!canAfford) ...[
-                        const SizedBox(height: 5),
-                        Text(
-                          'Не хватает ${item.buildPrice - availableGold} золота',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: canAfford ? AppColors.forest700 : AppColors.mutedInk,
+                IconButton(
+                  tooltip: 'Обновить город',
+                  onPressed: canInteract && state.preview == null
+                      ? () => context.read<CityBloc>().add(
+                          const CityRefreshRequested(),
+                        )
+                      : null,
+                  color: Colors.white,
+                  disabledColor: Colors.white24,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                ),
+                const SizedBox(width: 3),
+                FilledButton.tonalIcon(
+                  key: const ValueKey('city-edit-toggle'),
+                  onPressed: !canInteract
+                      ? null
+                      : () => context.read<CityBloc>().add(
+                          inViewMode
+                              ? const CityEditModeRequested()
+                              : const CityViewModeRequested(),
+                        ),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    backgroundColor: inViewMode
+                        ? AppColors.gold400
+                        : Colors.white.withValues(alpha: 0.12),
+                    foregroundColor: inViewMode
+                        ? AppColors.forest950
+                        : Colors.white,
+                  ),
+                  icon: Icon(
+                    inViewMode ? Icons.edit_rounded : Icons.done_rounded,
+                    size: 17,
+                  ),
+                  label: Text(inViewMode ? 'Править' : 'Готово'),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                _HeaderMetric(
+                  icon: Icons.monetization_on_rounded,
+                  value: '${data.profile.gold}',
+                  label: 'золото',
+                  color: AppColors.gold400,
+                ),
+                const SizedBox(width: 7),
+                _HeaderMetric(
+                  icon: Icons.auto_graph_rounded,
+                  value: '${data.profile.prosperity}',
+                  label: 'процветание',
+                  color: const Color(0xFF7FD5AA),
+                ),
+                const SizedBox(width: 7),
+                _HeaderMetric(
+                  icon: Icons.star_rounded,
+                  value: '${data.profile.level}',
+                  label: 'уровень',
+                  color: const Color(0xFF9CCAE8),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _ShopMetric extends StatelessWidget {
-  const _ShopMetric({
+class _HeaderMetric extends StatelessWidget {
+  const _HeaderMetric({
     required this.icon,
-    required this.text,
+    required this.value,
+    required this.label,
     required this.color,
   });
 
   final IconData icon;
-  final String text;
+  final String value;
+  final String label;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 3),
-        Text(
-          text,
-          style: const TextStyle(
-            color: AppColors.mutedInk,
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-          ),
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.075),
+          borderRadius: BorderRadius.circular(11),
         ),
-      ],
-    );
-  }
-}
-
-class _BuildingDialog extends StatelessWidget {
-  const _BuildingDialog({required this.building, required this.availableGold});
-
-  final CityBuilding building;
-  final int availableGold;
-
-  @override
-  Widget build(BuildContext context) {
-    final upgradeCost = building.upgradeCost;
-    final canUpgrade =
-        upgradeCost != null &&
-        !building.isMaxLevel &&
-        availableGold >= upgradeCost;
-
-    final icon = building.type == CityBuildingType.market
-        ? Icons.storefront_rounded
-        : Icons.account_balance_rounded;
-
-    return AlertDialog(
-      backgroundColor: AppColors.paper,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      titlePadding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
-      contentPadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
-      title: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              gradient: AppColors.goldGradient,
-              borderRadius: BorderRadius.all(Radius.circular(15)),
-            ),
-            child: Icon(icon, color: AppColors.forest950),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'УПРАВЛЕНИЕ ЗДАНИЕМ',
-                  style: TextStyle(
-                    color: AppColors.gold600,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-                Text(
-                  building.type.displayName,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                Text(
-                  '${building.level} уровень',
-                  style: const TextStyle(
-                    color: AppColors.mutedInk,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.mint200,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _BuildingMetric(
-                    label: 'Доход',
-                    value: '+${building.incomePerHour}/ч',
-                    icon: Icons.schedule_rounded,
-                  ),
-                ),
-                Container(width: 1, height: 32, color: const Color(0x1F153B33)),
-                Expanded(
-                  child: _BuildingMetric(
-                    label: 'Рост',
-                    value: '+${building.prosperity}',
-                    icon: Icons.auto_graph_rounded,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (upgradeCost != null && !building.isMaxLevel) ...[
-            Text(
-              'Улучшение до ${building.level + 1} уровня',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Стоимость — $upgradeCost золота.',
-              style: const TextStyle(color: AppColors.mutedInk),
-            ),
-            if (!canUpgrade) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Недостаточно золота.',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-          ] else
-            const Text('Достигнут максимальный уровень.'),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Закрыть'),
-        ),
-        FilledButton.icon(
-          onPressed: canUpgrade ? () => Navigator.pop(context, true) : null,
-          icon: const Icon(Icons.upgrade_rounded),
-          label: const Text('Улучшить'),
-        ),
-      ],
-    );
-  }
-}
-
-class _BuildingMetric extends StatelessWidget {
-  const _BuildingMetric({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 18, color: AppColors.forest700),
-        const SizedBox(width: 7),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Text(
-              value,
-              style: const TextStyle(
-                color: AppColors.forest900,
-                fontWeight: FontWeight.w900,
+            Icon(icon, color: color, size: 16),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                '$value $label',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            Text(
-              label,
-              style: const TextStyle(color: AppColors.mutedInk, fontSize: 10),
             ),
           ],
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _CityHint extends StatelessWidget {
+  const _CityHint({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassPanel(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.pan_tool_alt_rounded, color: AppColors.forest700),
+          SizedBox(width: 9),
+          Flexible(
+            child: Text(
+              'Перемещайте и масштабируйте карту. Нажмите на здание, чтобы узнать о нём больше.',
+              style: TextStyle(
+                color: AppColors.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BuildingInfoPanel extends StatelessWidget {
+  const _BuildingInfoPanel({required this.building, super.key});
+
+  final CityBuilding building;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassPanel(
+      child: Row(
+        children: [
+          _BuildingIcon(code: building.definition.visualCode),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  building.name,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Уровень ${building.level} · '
+                  '${building.footprint.size.width}×${building.footprint.size.height} · '
+                  '+${building.prosperity} процветания',
+                  style: const TextStyle(
+                    color: AppColors.mutedInk,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Закрыть',
+            onPressed: () =>
+                context.read<CityBloc>().add(const CityActionDismissed()),
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditPanel extends StatelessWidget {
+  const _EditPanel({
+    required this.data,
+    required this.selectedBuilding,
+    super.key,
+  });
+
+  final CityStateData data;
+  final CityBuilding? selectedBuilding;
+
+  @override
+  Widget build(BuildContext context) {
+    final building = selectedBuilding;
+    return _GlassPanel(
+      child: Row(
+        children: [
+          if (building != null) ...[
+            _BuildingIcon(code: building.definition.visualCode),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    building.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                  Text(
+                    'Клетка ${building.position.x + 1}:${building.position.y + 1}',
+                    style: const TextStyle(
+                      color: AppColors.mutedInk,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            OutlinedButton.icon(
+              key: const ValueKey('city-move-building'),
+              onPressed: () => context.read<CityBloc>().add(
+                CityMoveModeRequested(building.id),
+              ),
+              icon: const Icon(Icons.open_with_rounded, size: 18),
+              label: const Text('Перенести'),
+            ),
+            const SizedBox(width: 8),
+          ] else ...[
+            const Icon(Icons.grid_view_rounded, color: AppColors.forest700),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Выберите постройку на карте или добавьте новую.',
+                style: TextStyle(
+                  color: AppColors.mutedInk,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+          FilledButton.icon(
+            key: const ValueKey('city-open-catalog'),
+            onPressed: () => _openCatalog(context, data),
+            icon: const Icon(Icons.add_business_rounded, size: 18),
+            label: const Text('Строить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openCatalog(BuildContext context, CityStateData data) async {
+    final code = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (_) => _CityCatalogSheet(data: data),
+    );
+    if (code == null || !context.mounted) return;
+    context.read<CityBloc>().add(CityBuildModeRequested(code));
+  }
+}
+
+class _PlacementPanel extends StatelessWidget {
+  const _PlacementPanel({required this.mode, required this.preview, super.key});
+
+  final CityMode mode;
+  final CityPlacementPreview preview;
+
+  @override
+  Widget build(BuildContext context) {
+    final isValid = preview.validation.isValid;
+    final size = preview.footprint.size;
+    return _GlassPanel(
+      key: ValueKey(
+        isValid ? 'city-placement-valid' : 'city-placement-invalid',
+      ),
+      borderColor: isValid ? const Color(0x6631A666) : const Color(0x66C33E3E),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: (isValid ? const Color(0xFF2FA866) : AppColors.danger)
+                  .withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              isValid ? Icons.check_rounded : Icons.close_rounded,
+              color: isValid ? const Color(0xFF1D8250) : AppColors.danger,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  preview.definition.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  '${preview.validation.message} · '
+                  '${size.width}×${size.height} · '
+                  '${preview.rotation.degrees}°',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isValid ? AppColors.mutedInk : AppColors.danger,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton.outlined(
+            key: const ValueKey('city-rotate-placement'),
+            tooltip: 'Повернуть на 90°',
+            onPressed: () =>
+                context.read<CityBloc>().add(const CityPlacementRotated()),
+            icon: const Icon(Icons.rotate_90_degrees_cw_rounded),
+          ),
+          const SizedBox(width: 7),
+          IconButton.outlined(
+            key: const ValueKey('city-cancel-placement'),
+            tooltip: 'Отменить',
+            onPressed: () =>
+                context.read<CityBloc>().add(const CityPlacementCanceled()),
+            icon: const Icon(Icons.close_rounded),
+          ),
+          const SizedBox(width: 7),
+          FilledButton.icon(
+            key: const ValueKey('city-confirm-placement'),
+            onPressed: isValid
+                ? () => context.read<CityBloc>().add(
+                    const CityPlacementConfirmed(),
+                  )
+                : null,
+            icon: Icon(
+              mode == CityMode.build
+                  ? Icons.construction_rounded
+                  : Icons.done_rounded,
+              size: 18,
+            ),
+            label: Text(
+              mode == CityMode.build
+                  ? '${preview.definition.price} золота'
+                  : 'Сохранить',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CityCatalogSheet extends StatelessWidget {
+  const _CityCatalogSheet({required this.data});
+
+  final CityStateData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = data.buildableDefinitions;
+    return FractionallySizedBox(
+      heightFactor: 0.72,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1C9BA),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 17),
+            Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'АРХИТЕКТУРНОЕ БЮРО',
+                        style: TextStyle(
+                          color: AppColors.gold600,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      Text(
+                        'Выберите постройку',
+                        style: TextStyle(
+                          color: AppColors.ink,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _GoldBadge(value: data.profile.gold),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Expanded(
+              child: items.isEmpty
+                  ? const Center(child: Text('Каталог пока пуст.'))
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final columns = constraints.maxWidth >= 680 ? 3 : 2;
+                        return GridView.builder(
+                          itemCount: items.length,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                mainAxisSpacing: 10,
+                                crossAxisSpacing: 10,
+                                childAspectRatio: columns == 3 ? 1.55 : 1.12,
+                              ),
+                          itemBuilder: (context, index) => _CatalogCard(
+                            definition: items[index],
+                            profile: data.profile,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogCard extends StatelessWidget {
+  const _CatalogCard({required this.definition, required this.profile});
+
+  final BuildingDefinition definition;
+  final CityProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final unlocked = definition.isUnlockedAt(profile.level);
+    final affordable = profile.gold >= definition.price;
+    final enabled = unlocked && affordable;
+    return Opacity(
+      opacity: enabled ? 1 : 0.58,
+      child: Material(
+        key: ValueKey('city-catalog-${definition.code}'),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled
+              ? () => Navigator.of(context).pop(definition.code)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _BuildingIcon(code: definition.code),
+                    const Spacer(),
+                    if (!unlocked)
+                      const Icon(
+                        Icons.lock_rounded,
+                        size: 18,
+                        color: AppColors.mutedInk,
+                      ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  definition.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  !unlocked
+                      ? 'Нужен уровень ${definition.requiredPlayerLevel}'
+                      : !affordable
+                      ? 'Не хватает ${definition.price - profile.gold}'
+                      : '${definition.footprintWidth}×${definition.footprintHeight} · '
+                            '+${definition.prosperity}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.mutedInk,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.monetization_on_rounded,
+                      size: 16,
+                      color: AppColors.gold600,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${definition.price}',
+                      style: const TextStyle(
+                        color: AppColors.forest900,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BuildingIcon extends StatelessWidget {
+  const _BuildingIcon({required this.code});
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: AppColors.mint200,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Icon(_iconForBuilding(code), color: AppColors.forest700, size: 22),
+    );
+  }
+}
+
+class _GoldBadge extends StatelessWidget {
+  const _GoldBadge({required this.value});
+
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEBC5),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.monetization_on_rounded,
+            size: 17,
+            color: AppColors.gold600,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            '$value',
+            style: const TextStyle(
+              color: AppColors.forest900,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({required this.child, this.borderColor, super.key});
+
+  final Widget child;
+  final Color? borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.paper.withValues(alpha: 0.96),
+      borderRadius: BorderRadius.circular(22),
+      elevation: 5,
+      shadowColor: AppColors.forest950.withValues(alpha: 0.18),
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: borderColor ?? const Color(0x243F9373)),
+        ),
+        child: child,
+      ),
     );
   }
 }
@@ -900,7 +925,7 @@ class _FailureView extends StatelessWidget {
             FilledButton.icon(
               onPressed: () =>
                   context.read<CityBloc>().add(const CityStarted()),
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh_rounded),
               label: const Text('Повторить'),
             ),
           ],
@@ -908,4 +933,17 @@ class _FailureView extends StatelessWidget {
       ),
     );
   }
+}
+
+IconData _iconForBuilding(String code) {
+  return switch (code) {
+    'town_hall' => Icons.account_balance_rounded,
+    'house' => Icons.home_rounded,
+    'library' => Icons.local_library_rounded,
+    'workshop' => Icons.handyman_rounded,
+    'market' => Icons.storefront_rounded,
+    'tower' => Icons.castle_rounded,
+    'garden' => Icons.park_rounded,
+    _ => Icons.apartment_rounded,
+  };
 }

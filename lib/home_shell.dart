@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:task_empire/core/theme/app_theme.dart';
-import 'package:task_empire/features/calendar/presentation/calendar_screen.dart';
 import 'package:task_empire/features/city/bloc/city_bloc.dart';
 import 'package:task_empire/features/city/presentation/city_screen.dart';
+import 'package:task_empire/features/progression/bloc/progression_bloc.dart';
+import 'package:task_empire/features/progression/presentation/profile_screen.dart';
+import 'package:task_empire/features/tasks/presentation/task_calendar_screen.dart';
+import 'package:task_empire/features/tasks/presentation/today_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -21,8 +24,22 @@ class _HomeShellState extends State<HomeShell> {
       builder: (context, constraints) {
         final useRail = constraints.maxWidth >= 900;
         final pages = [
-          CalendarScreen(isActive: _selectedIndex == 0),
-          CityScreen(isActive: _selectedIndex == 1),
+          TickerMode(
+            enabled: _selectedIndex == 0,
+            child: TodayScreen(isActive: _selectedIndex == 0),
+          ),
+          TickerMode(
+            enabled: _selectedIndex == 1,
+            child: TaskCalendarScreen(isActive: _selectedIndex == 1),
+          ),
+          TickerMode(
+            enabled: _selectedIndex == 2,
+            child: CityScreen(isActive: _selectedIndex == 2),
+          ),
+          TickerMode(
+            enabled: _selectedIndex == 3,
+            child: ProfileScreen(isActive: _selectedIndex == 3),
+          ),
         ];
 
         return Scaffold(
@@ -66,12 +83,23 @@ class _HomeShellState extends State<HomeShell> {
   void _selectDestination(int index) {
     if (index == _selectedIndex) return;
     setState(() => _selectedIndex = index);
-    if (index == 1) {
+    if (index == 2) {
       final cityBloc = context.read<CityBloc>();
-      if (cityBloc.state case CityLoading(previousData: null)) {
+      if (cityBloc.state is CityOperationInProgress) return;
+      if (cityBloc.state.data == null) {
         cityBloc.add(const CityStarted());
-      } else if (cityBloc.state is CityDisplay) {
+      } else {
         cityBloc.add(const CityRefreshRequested());
+      }
+    }
+    if (index == 3) {
+      final progressionBloc = context.read<ProgressionBloc>();
+      if (progressionBloc.state case ProgressionLoading(
+        previousProfile: null,
+      )) {
+        progressionBloc.add(const ProgressionStarted());
+      } else {
+        progressionBloc.add(const ProgressionRefreshRequested());
       }
     }
   }
@@ -108,14 +136,24 @@ class _EmpireRail extends StatelessWidget {
           ),
           destinations: const [
             NavigationRailDestination(
+              icon: Icon(Icons.today_outlined),
+              selectedIcon: Icon(Icons.today_rounded),
+              label: Text('Сегодня'),
+            ),
+            NavigationRailDestination(
               icon: Icon(Icons.calendar_month_outlined),
               selectedIcon: Icon(Icons.calendar_month_rounded),
-              label: Text('Задачи'),
+              label: Text('Календарь'),
             ),
             NavigationRailDestination(
               icon: Icon(Icons.location_city_outlined),
               selectedIcon: Icon(Icons.location_city_rounded),
               label: Text('Город'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.person_outline_rounded),
+              selectedIcon: Icon(Icons.person_rounded),
+              label: Text('Профиль'),
             ),
           ],
         ),
@@ -156,14 +194,24 @@ class _EmpireBottomNavigation extends StatelessWidget {
             onDestinationSelected: onSelected,
             destinations: const [
               NavigationDestination(
+                icon: Icon(Icons.today_outlined),
+                selectedIcon: Icon(Icons.today_rounded),
+                label: 'Сегодня',
+              ),
+              NavigationDestination(
                 icon: Icon(Icons.calendar_month_outlined),
                 selectedIcon: Icon(Icons.calendar_month_rounded),
-                label: 'Задачи',
+                label: 'Календарь',
               ),
               NavigationDestination(
                 icon: Icon(Icons.location_city_outlined),
                 selectedIcon: Icon(Icons.location_city_rounded),
                 label: 'Город',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline_rounded),
+                selectedIcon: Icon(Icons.person_rounded),
+                label: 'Профиль',
               ),
             ],
           ),

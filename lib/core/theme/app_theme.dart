@@ -27,6 +27,43 @@ abstract final class AppColors {
   );
 }
 
+/// Shared layout tokens for the hand-authored Task Empire visual language.
+abstract final class AppSpacing {
+  static const xxs = 4.0;
+  static const xs = 8.0;
+  static const sm = 12.0;
+  static const md = 16.0;
+  static const lg = 24.0;
+  static const xl = 32.0;
+  static const xxl = 48.0;
+}
+
+abstract final class AppRadii {
+  static const control = 16.0;
+  static const card = 24.0;
+  static const hero = 28.0;
+  static const sheet = 30.0;
+}
+
+abstract final class AppMotion {
+  static const quick = Duration(milliseconds: 180);
+  static const standard = Duration(milliseconds: 280);
+}
+
+abstract final class AppShadows {
+  static const card = BoxShadow(
+    color: Color(0x110E2924),
+    blurRadius: 18,
+    offset: Offset(0, 8),
+  );
+
+  static const elevated = BoxShadow(
+    color: Color(0x2B153B33),
+    blurRadius: 26,
+    offset: Offset(0, 12),
+  );
+}
+
 abstract final class AppTheme {
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
@@ -142,12 +179,44 @@ abstract final class AppTheme {
           ),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.forest700,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          side: const BorderSide(color: Color(0x333F9373)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.control),
+          ),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.paper,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.card),
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: AppColors.paper,
+        surfaceTintColor: Colors.transparent,
+        modalBackgroundColor: AppColors.paper,
+        modalBarrierColor: Color(0x94153B33),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadii.sheet),
+          ),
+        ),
+      ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: AppColors.gold400,
         foregroundColor: AppColors.forest950,
         elevation: 8,
       ),
       dividerTheme: const DividerThemeData(color: Color(0x140E2924)),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: AppColors.gold600,
+        linearTrackColor: Color(0xFFE1DACC),
+      ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.forest950,
         contentTextStyle: const TextStyle(color: Colors.white),

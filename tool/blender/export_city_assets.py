@@ -27,7 +27,18 @@ RENDER_SIZE = 1024
 CAMERA_LOCATION = Vector((9.5, -9.5, 8.0))
 CAMERA_TARGET = Vector((0.0, 0.0, 1.1))
 ORTHOGRAPHIC_SCALE = 5.8
-VALID_ASSET_NAME = re.compile(r"^(market|town_hall)_level_[1-9][0-9]*$")
+BUILDING_CODES = (
+    "town_hall",
+    "house",
+    "library",
+    "workshop",
+    "market",
+    "tower",
+    "garden",
+)
+VALID_ASSET_NAME = re.compile(
+    rf"^({'|'.join(BUILDING_CODES)})_level_[1-9][0-9]*$"
+)
 
 
 def find_project_root() -> Path:

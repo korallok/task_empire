@@ -3,14 +3,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:task_empire/core/theme/app_theme.dart';
-import 'package:task_empire/features/calendar/bloc/calendar_bloc.dart';
-import 'package:task_empire/features/calendar/data/task_repository.dart';
 import 'package:task_empire/features/city/bloc/city_bloc.dart';
 import 'package:task_empire/features/city/data/city_repository.dart';
+import 'package:task_empire/features/progression/bloc/progression_bloc.dart';
+import 'package:task_empire/features/progression/data/progression_repository.dart';
+import 'package:task_empire/features/tasks/bloc/tasks_bloc.dart';
+import 'package:task_empire/features/tasks/data/task_repository.dart';
 import 'package:task_empire/home_shell.dart';
 
-class CalendarStrategyApp extends StatelessWidget {
-  const CalendarStrategyApp({required this.supabase, super.key});
+class TaskEmpireApp extends StatelessWidget {
+  const TaskEmpireApp({required this.supabase, super.key});
 
   final SupabaseClient supabase;
 
@@ -23,6 +25,9 @@ class CalendarStrategyApp extends StatelessWidget {
         ),
         RepositoryProvider<CityRepository>(
           create: (_) => SupabaseCityRepository(supabase),
+        ),
+        RepositoryProvider<ProgressionRepository>(
+          create: (_) => SupabaseProgressionRepository(supabase),
         ),
       ],
       child: const TaskEmpireView(),
@@ -37,14 +42,19 @@ class TaskEmpireView extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<CalendarBloc>(
+        BlocProvider<TasksBloc>(
           create: (context) =>
-              CalendarBloc(repository: context.read<TaskRepository>())
-                ..add(const CalendarStarted()),
+              TasksBloc(repository: context.read<TaskRepository>())
+                ..add(const TasksStarted()),
         ),
         BlocProvider<CityBloc>(
           create: (context) =>
               CityBloc(repository: context.read<CityRepository>()),
+        ),
+        BlocProvider<ProgressionBloc>(
+          create: (context) => ProgressionBloc(
+            repository: context.read<ProgressionRepository>(),
+          ),
         ),
       ],
       child: MaterialApp(

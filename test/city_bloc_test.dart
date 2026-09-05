@@ -12,34 +12,65 @@ void main() {
     final bloc = CityBloc(repository: repository);
     addTearDown(bloc.close);
 
+    final loaded = bloc.stream.firstWhere((state) => state is CityDisplay);
     bloc.add(const CityStarted());
-    await bloc.stream.firstWhere((state) => state is CityDisplay);
-
-    const tile = CityTileCoordinate(2, 3);
-    bloc.add(const CityTileTapped(tile));
-    await bloc.stream.firstWhere((state) => state is CityActionRequired);
+    await loaded;
 
     final buildGate = Completer<void>();
     repository.buildGate = buildGate;
-    bloc.add(
-      const CityBuildRequested(type: CityBuildingType.market, tile: tile),
-    );
-    await bloc.stream.firstWhere((state) => state is CityOperationInProgress);
+    const position = CityTileCoordinate(2, 3);
+    const request = CityBuildRequested(code: 'market', position: position);
 
-    bloc.add(
-      const CityBuildRequested(type: CityBuildingType.market, tile: tile),
+    final operation = bloc.stream.firstWhere(
+      (state) => state is CityOperationInProgress,
+    );
+    bloc.add(request);
+    await operation;
+    bloc.add(request);
+
+    final finished = bloc.stream.firstWhere(
+      (state) => state is CityDisplay && state.data.buildings.isNotEmpty,
     );
     buildGate.complete();
-    final display =
-        await bloc.stream.firstWhere(
-              (state) =>
-                  state is CityDisplay && state.data.buildings.isNotEmpty,
-            )
-            as CityDisplay;
+    final display = await finished as CityDisplay;
     await Future<void>.delayed(Duration.zero);
 
     expect(repository.buildCalls, 1);
-    expect(display.data.buildingAt(tile)?.type, CityBuildingType.market);
+    expect(display.data.buildingAt(position)?.code, 'market');
+    expect(display.mode, CityMode.edit);
+  });
+
+  test('moving a building ignores its original footprint', () async {
+    final repository = _FakeCityRepository(
+      buildings: [_buildingRow(id: 'house-1', code: 'house', x: 0, y: 0)],
+    );
+    final bloc = CityBloc(repository: repository);
+    addTearDown(bloc.close);
+
+    final loaded = bloc.stream.firstWhere((state) => state is CityDisplay);
+    bloc.add(const CityStarted());
+    await loaded;
+
+    const destination = CityTileCoordinate(3, 3);
+    final finished = bloc.stream.firstWhere(
+      (state) =>
+          state is CityDisplay &&
+          state.data.buildingById('house-1')?.position == destination,
+    );
+    bloc.add(
+      const CityMoveRequested(
+        buildingId: 'house-1',
+        position: destination,
+        rotation: CityBuildingRotation.east,
+      ),
+    );
+    final display = await finished as CityDisplay;
+
+    expect(repository.moveCalls, 1);
+    expect(
+      display.data.buildingById('house-1')?.rotation,
+      CityBuildingRotation.east,
+    );
   });
 
   test('city state parser rejects duplicate catalog entries', () {
@@ -51,73 +82,191 @@ void main() {
 
     expect(() => CityStateData.fromJson(json), throwsFormatException);
   });
+
+  test('migrated legacy buildings keep their level but stay non-buildable', () {
+    final legacyDefinition = _definitionRow(
+      'legacy_market',
+      'Рынок',
+      0,
+      1,
+      1,
+      45,
+      level: 3,
+      spriteCode: 'market',
+    );
+    final json = _cityJson(
+      buildings: [
+        {
+          ...legacyDefinition,
+          'id': 'legacy-market-1',
+          'position_x': 7,
+          'position_y': 8,
+          'rotation': 0,
+        },
+      ],
+    );
+
+    final data = CityStateData.fromJson(json);
+    final building = data.buildingById('legacy-market-1')!;
+
+    expect(building.level, 3);
+    expect(building.definition.isLegacyImport, isTrue);
+    expect(building.definition.visualCode, 'market');
+    expect(building.type, CityBuildingType.market);
+    expect(building.footprint.size, const CityFootprintSize(1, 1));
+    expect(
+      data.buildableDefinitions.any((definition) => definition.isLegacyImport),
+      isFalse,
+    );
+  });
+
+  test('placement validation checks bounds and rectangular overlap', () {
+    final data = CityStateData.fromJson(
+      _cityJson(
+        buildings: [_buildingRow(id: 'market-1', code: 'market', x: 3, y: 3)],
+      ),
+    );
+    final workshop = data.definitionForCode('workshop')!;
+
+    expect(
+      data
+          .validatePlacement(
+            definition: workshop,
+            position: const CityTileCoordinate(2, 4),
+            rotation: CityBuildingRotation.east,
+          )
+          .issue,
+      CityPlacementIssue.overlap,
+    );
+    expect(
+      data
+          .validatePlacement(
+            definition: workshop,
+            position: const CityTileCoordinate(8, 8),
+            rotation: CityBuildingRotation.north,
+          )
+          .issue,
+      CityPlacementIssue.outOfBounds,
+    );
+  });
 }
 
 Map<String, dynamic> _cityJson({
+  int gold = 200,
   List<Map<String, dynamic>> buildings = const [],
 }) {
   return {
-    'profile': {
-      'gold': 100,
-      'prosperity': 0,
-      'daily_gold_earned': 0,
-      'passive_gold_earned': 0,
-      'income_per_hour': 0,
-    },
+    'profile': {'gold': gold, 'xp': 180, 'level': 5, 'prosperity': 0},
+    'city': {'map_level': 1, 'map_width': 10, 'map_height': 9},
     'buildings': buildings,
     'catalog': [
-      {
-        'type': 'market',
-        'build_price': 200,
-        'income_per_hour': 5,
-        'prosperity': 15,
-        'max_level': 5,
-      },
-      {
-        'type': 'town_hall',
-        'build_price': 500,
-        'income_per_hour': 12,
-        'prosperity': 40,
-        'max_level': 5,
-      },
+      _definitionRow('town_hall', 'Ратуша', 60, 4, 4, 40),
+      _definitionRow('house', 'Дом', 15, 2, 2, 10),
+      _definitionRow('library', 'Библиотека', 45, 3, 3, 25),
+      _definitionRow('workshop', 'Мастерская', 60, 3, 2, 30),
+      _definitionRow('market', 'Рынок', 75, 3, 3, 35),
+      _definitionRow('tower', 'Башня', 100, 2, 2, 45),
+      _definitionRow('garden', 'Сад', 10, 2, 2, 8),
     ],
   };
 }
 
+Map<String, dynamic> _definitionRow(
+  String code,
+  String name,
+  int price,
+  int width,
+  int height,
+  int prosperity, {
+  int level = 1,
+  String? spriteCode,
+}) {
+  return {
+    'id': 'definition-$code-$level',
+    'code': code,
+    'name': name,
+    'level': level,
+    'price': price,
+    'required_player_level': 1,
+    'sprite': 'assets/city/buildings/${spriteCode ?? code}_level_$level.webp',
+    'footprint_width': width,
+    'footprint_height': height,
+    'prosperity': prosperity,
+  };
+}
+
+Map<String, dynamic> _buildingRow({
+  required String id,
+  required String code,
+  required int x,
+  required int y,
+  int rotation = 0,
+}) {
+  final definitions = <String, Map<String, dynamic>>{
+    'house': _definitionRow('house', 'Дом', 15, 2, 2, 10),
+    'market': _definitionRow('market', 'Рынок', 75, 3, 3, 35),
+  };
+  return {
+    ...definitions[code]!,
+    'id': id,
+    'position_x': x,
+    'position_y': y,
+    'rotation': rotation,
+  };
+}
+
 final class _FakeCityRepository implements CityRepository {
-  var _data = CityStateData.fromJson(_cityJson());
+  _FakeCityRepository({List<Map<String, dynamic>> buildings = const []})
+    : _buildings = [...buildings];
+
+  final List<Map<String, dynamic>> _buildings;
   Completer<void>? buildGate;
   var buildCalls = 0;
+  var moveCalls = 0;
+  var _gold = 200;
+
+  CityStateData get _data =>
+      CityStateData.fromJson(_cityJson(gold: _gold, buildings: _buildings));
 
   @override
-  Future<void> buildBuilding({
-    required CityBuildingType type,
-    required CityTileCoordinate tile,
+  Future<CityStateData> buildBuilding({
+    required String code,
+    required CityTileCoordinate position,
+    required CityBuildingRotation rotation,
   }) async {
     buildCalls += 1;
     await buildGate?.future;
-    _data = CityStateData.fromJson(
-      _cityJson(
-        buildings: [
-          {
-            'id': 'building-1',
-            'type': type.databaseValue,
-            'level': 1,
-            'iso_x': tile.x,
-            'iso_y': tile.y,
-            'income_per_hour': type == CityBuildingType.market ? 5 : 12,
-            'prosperity': type == CityBuildingType.market ? 15 : 40,
-            'upgrade_cost': type == CityBuildingType.market ? 350 : 875,
-            'max_level': 5,
-          },
-        ],
-      ),
-    );
+    final definition = (_cityJson()['catalog'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .singleWhere((row) => row['code'] == code);
+    _gold -= definition['price'] as int;
+    _buildings.add({
+      ...definition,
+      'id': 'building-$buildCalls',
+      'position_x': position.x,
+      'position_y': position.y,
+      'rotation': rotation.degrees,
+    });
+    return _data;
   }
 
   @override
   Future<CityStateData> fetchCity() async => _data;
 
   @override
-  Future<void> upgradeBuilding(String buildingId) async {}
+  Future<CityStateData> moveBuilding({
+    required String buildingId,
+    required CityTileCoordinate position,
+    required CityBuildingRotation rotation,
+  }) async {
+    moveCalls += 1;
+    final index = _buildings.indexWhere((row) => row['id'] == buildingId);
+    _buildings[index] = {
+      ..._buildings[index],
+      'position_x': position.x,
+      'position_y': position.y,
+      'rotation': rotation.degrees,
+    };
+    return _data;
+  }
 }

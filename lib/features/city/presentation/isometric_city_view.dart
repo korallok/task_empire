@@ -14,12 +14,22 @@ class IsometricCityView extends StatefulWidget {
   const IsometricCityView({
     required this.buildings,
     required this.onTileTap,
+    this.city = CityMap.legacy,
+    this.preview,
+    this.selectedBuildingId,
+    this.selectedTile,
+    this.showGrid = false,
     this.transformationController,
     super.key,
   });
 
+  final CityMap city;
   final List<CityBuilding> buildings;
   final CityTileTapCallback onTileTap;
+  final CityPlacementPreview? preview;
+  final String? selectedBuildingId;
+  final CityTileCoordinate? selectedTile;
+  final bool showGrid;
 
   /// Optional controller for automated tests and external camera controls.
   final TransformationController? transformationController;
@@ -29,21 +39,15 @@ class IsometricCityView extends StatefulWidget {
 }
 
 class _IsometricCityViewState extends State<IsometricCityView> {
-  static const _sceneSize = Size(1040, 720);
-  static const _tileWidth = 104.0;
-  static const _tileHeight = 52.0;
-  static const _projection = IsometricProjection(
-    tileWidth: _tileWidth,
-    tileHeight: _tileHeight,
-    origin: Offset(520, 224),
-  );
+  static const _tileWidth = 92.0;
+  static const _tileHeight = 46.0;
 
   final _internalController = TransformationController();
-  CityTileCoordinate? _selectedTile;
   Map<String, ui.Image> _buildingSprites = const {};
   AssetBundle? _loadedBundle;
   String? _loadedAssetSignature;
   Size? _viewportSize;
+  String? _layoutSignature;
   int _spriteLoadGeneration = 0;
 
   TransformationController get _controller =>
@@ -58,12 +62,13 @@ class _IsometricCityViewState extends State<IsometricCityView> {
   @override
   void didUpdateWidget(covariant IsometricCityView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_assetSignature(oldWidget.buildings) !=
-        _assetSignature(widget.buildings)) {
+    if (_assetSignature(oldWidget) != _assetSignature(widget)) {
       _loadBuildingSprites(force: true);
     }
-    if (oldWidget.transformationController != widget.transformationController) {
+    if (oldWidget.transformationController != widget.transformationController ||
+        oldWidget.city != widget.city) {
       _viewportSize = null;
+      _layoutSignature = null;
     }
   }
 
@@ -79,17 +84,20 @@ class _IsometricCityViewState extends State<IsometricCityView> {
 
   @override
   Widget build(BuildContext context) {
+    final scene = _CitySceneGeometry.fromMap(widget.city);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final availableWidth = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
+        final fallbackSize = MediaQuery.sizeOf(context);
         final viewportSize = Size(
-          availableWidth,
-          (availableWidth * 0.72).clamp(310.0, 620.0),
+          constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : fallbackSize.width,
+          constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : (fallbackSize.height * 0.68).clamp(320, 720).toDouble(),
         );
-        final minScale = _minimumScale(viewportSize);
-        _scheduleInitialView(viewportSize);
+        final minScale = _minimumScale(viewportSize, scene.size);
+        _scheduleInitialView(viewportSize, scene.size);
 
         return Semantics(
           label:
@@ -105,22 +113,26 @@ class _IsometricCityViewState extends State<IsometricCityView> {
                     constrained: false,
                     alignment: Alignment.topLeft,
                     minScale: minScale,
-                    maxScale: 2.5,
-                    boundaryMargin: const EdgeInsets.all(360),
+                    maxScale: 2.8,
+                    boundaryMargin: const EdgeInsets.all(480),
                     clipBehavior: Clip.hardEdge,
-                    scaleFactor: 160,
+                    scaleFactor: 150,
                     child: GestureDetector(
                       key: const ValueKey('city-scene'),
                       behavior: HitTestBehavior.opaque,
-                      onTapUp: (details) => _handleTap(details.localPosition),
+                      onTapUp: (details) =>
+                          _handleTap(details.localPosition, scene.projection),
                       child: CustomPaint(
-                        size: _sceneSize,
+                        size: scene.size,
                         painter: IsometricCityPainter(
-                          projection: _projection,
+                          projection: scene.projection,
                           buildings: widget.buildings,
                           buildingSprites: _buildingSprites,
                           colorScheme: Theme.of(context).colorScheme,
-                          selectedTile: _selectedTile,
+                          preview: widget.preview,
+                          selectedBuildingId: widget.selectedBuildingId,
+                          selectedTile: widget.selectedTile,
+                          showGrid: widget.showGrid,
                         ),
                       ),
                     ),
@@ -130,9 +142,9 @@ class _IsometricCityViewState extends State<IsometricCityView> {
                   top: 12,
                   right: 12,
                   child: _CityCameraControls(
-                    onZoomIn: () => _zoomBy(1.22),
-                    onZoomOut: () => _zoomBy(1 / 1.22),
-                    onReset: _resetView,
+                    onZoomIn: () => _zoomBy(1.22, scene.size),
+                    onZoomOut: () => _zoomBy(1 / 1.22, scene.size),
+                    onReset: () => _resetView(scene.size),
                   ),
                 ),
               ],
@@ -143,54 +155,59 @@ class _IsometricCityViewState extends State<IsometricCityView> {
     );
   }
 
-  void _scheduleInitialView(Size viewportSize) {
-    if (_viewportSize == viewportSize) return;
+  void _scheduleInitialView(Size viewportSize, Size sceneSize) {
+    final signature = '${sceneSize.width}:${sceneSize.height}';
+    if (_viewportSize == viewportSize && _layoutSignature == signature) return;
     _viewportSize = viewportSize;
+    _layoutSignature = signature;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _viewportSize != viewportSize) return;
-      _controller.value = _centeredMatrix(viewportSize);
+      if (!mounted ||
+          _viewportSize != viewportSize ||
+          _layoutSignature != signature) {
+        return;
+      }
+      _controller.value = _centeredMatrix(viewportSize, sceneSize);
     });
   }
 
-  Matrix4 _centeredMatrix(Size viewportSize) {
+  Matrix4 _centeredMatrix(Size viewportSize, Size sceneSize) {
     final fitScale = math.min(
-      viewportSize.width / _sceneSize.width,
-      viewportSize.height / _sceneSize.height,
+      viewportSize.width / sceneSize.width,
+      viewportSize.height / sceneSize.height,
     );
-    final scale = (fitScale * 1.22)
-        .clamp(_minimumScale(viewportSize), 1.08)
+    final scale = (fitScale * 1.1)
+        .clamp(_minimumScale(viewportSize, sceneSize), 1.0)
         .toDouble();
-    final horizontalOffset =
-        (viewportSize.width - _sceneSize.width * scale) / 2;
-    final verticalOffset =
-        (viewportSize.height - _sceneSize.height * scale) / 2 + 12;
     return _viewMatrix(
       scale: scale,
-      offset: Offset(horizontalOffset, verticalOffset),
+      offset: Offset(
+        (viewportSize.width - sceneSize.width * scale) / 2,
+        (viewportSize.height - sceneSize.height * scale) / 2,
+      ),
     );
   }
 
-  double _minimumScale(Size viewportSize) {
+  double _minimumScale(Size viewportSize, Size sceneSize) {
     final fitScale = math.min(
-      viewportSize.width / _sceneSize.width,
-      viewportSize.height / _sceneSize.height,
+      viewportSize.width / sceneSize.width,
+      viewportSize.height / sceneSize.height,
     );
-    return (fitScale * 0.86).clamp(0.25, 1.0).toDouble();
+    return (fitScale * 0.72).clamp(0.12, 1.0).toDouble();
   }
 
-  void _resetView() {
+  void _resetView(Size sceneSize) {
     final viewportSize = _viewportSize;
     if (viewportSize == null) return;
-    _controller.value = _centeredMatrix(viewportSize);
+    _controller.value = _centeredMatrix(viewportSize, sceneSize);
   }
 
-  void _zoomBy(double factor) {
+  void _zoomBy(double factor, Size sceneSize) {
     final viewportSize = _viewportSize;
     if (viewportSize == null) return;
 
     final currentScale = _controller.value.getMaxScaleOnAxis();
     final nextScale = (currentScale * factor)
-        .clamp(_minimumScale(viewportSize), 2.5)
+        .clamp(_minimumScale(viewportSize, sceneSize), 2.8)
         .toDouble();
     final viewportCenter = viewportSize.center(Offset.zero);
     final scenePoint = _controller.toScene(viewportCenter);
@@ -209,24 +226,25 @@ class _IsometricCityViewState extends State<IsometricCityView> {
       ..setEntry(1, 3, offset.dy);
   }
 
-  void _handleTap(Offset position) {
+  void _handleTap(Offset position, IsometricProjection projection) {
+    final tile = projection.tileAt(position);
+    if (tile != null) {
+      widget.onTileTap(tile);
+      return;
+    }
     final tappedBuilding = IsometricCityPainter.buildingAt(
       position: position,
       buildings: widget.buildings,
-      projection: _projection,
+      projection: projection,
     );
-    final tile = tappedBuilding?.tile ?? _projection.tileAt(position);
-    if (tile == null) return;
-
-    if (_selectedTile != tile) {
-      setState(() => _selectedTile = tile);
+    if (tappedBuilding != null) {
+      widget.onTileTap(tappedBuilding.position);
     }
-    widget.onTileTap(tile);
   }
 
   void _loadBuildingSprites({bool force = false}) {
     final bundle = DefaultAssetBundle.of(context);
-    final signature = _assetSignature(widget.buildings);
+    final signature = _assetSignature(widget);
     if (!force &&
         identical(bundle, _loadedBundle) &&
         signature == _loadedAssetSignature) {
@@ -239,6 +257,10 @@ class _IsometricCityViewState extends State<IsometricCityView> {
     CityBuildingArt.loadAvailableSprites(
       bundle: bundle,
       buildings: widget.buildings,
+      additionalDefinitions: [
+        if (widget.preview case CityPlacementPreview(:final definition))
+          definition,
+      ],
     ).then((sprites) {
       if (!mounted || generation != _spriteLoadGeneration) {
         for (final image in sprites.values) {
@@ -249,19 +271,53 @@ class _IsometricCityViewState extends State<IsometricCityView> {
       for (final image in _buildingSprites.values) {
         image.dispose();
       }
-      setState(() => _buildingSprites = Map.unmodifiable(sprites));
+      setState(() => _buildingSprites = sprites);
     });
   }
 
-  String _assetSignature(Iterable<CityBuilding> buildings) {
-    final keys =
-        buildings
-            .map((building) => CityBuildingArt.forBuilding(building).key)
-            .toSet()
-            .toList()
-          ..sort();
+  String _assetSignature(IsometricCityView value) {
+    final keys = <String>{
+      for (final building in value.buildings)
+        CityBuildingArt.forBuilding(building).key,
+      if (value.preview != null)
+        CityBuildingArt.forDefinition(value.preview!.definition).key,
+    }.toList()..sort();
     return keys.join('|');
   }
+}
+
+final class _CitySceneGeometry {
+  const _CitySceneGeometry({required this.size, required this.projection});
+
+  factory _CitySceneGeometry.fromMap(CityMap city) {
+    const horizontalMargin = 150.0;
+    const topMargin = 250.0;
+    const bottomMargin = 120.0;
+    final size = Size(
+      (city.width + city.height) * _IsometricCityViewState._tileWidth / 2 +
+          horizontalMargin * 2,
+      (city.width + city.height) * _IsometricCityViewState._tileHeight / 2 +
+          topMargin +
+          bottomMargin,
+    );
+    return _CitySceneGeometry(
+      size: size,
+      projection: IsometricProjection(
+        tileWidth: _IsometricCityViewState._tileWidth,
+        tileHeight: _IsometricCityViewState._tileHeight,
+        origin: Offset(
+          horizontalMargin +
+              city.height * _IsometricCityViewState._tileWidth / 2,
+          topMargin,
+        ),
+        width: city.width,
+        height: city.height,
+      ),
+    );
+  }
+
+  final Size size;
+  final IsometricProjection projection;
 }
 
 class _CityCameraControls extends StatelessWidget {

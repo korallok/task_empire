@@ -3,10 +3,9 @@
     "short_name": "Task Empire",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#F4F2EA",
-    "theme_color": "#2E7D5A",
-    "description": "Календарь задач, который превращает прогресс в изометрический город.",
-    "orientation": "portrait-primary",
+    "background_color": "#F5F0E4",
+    "theme_color": "#286B58",
+    "description": "Реальные задачи, XP и свободно строящийся персональный город.",
     "prefer_related_applications": false,
     "icons": [
         {

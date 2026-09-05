@@ -1,11 +1,37 @@
-# Task Empire
+# Task Empire 2.0
 
-Task Empire is a Flutter calendar game: completing real tasks awards server-side
-gold that can be spent on an isometric city.
+Task Empire turns real productivity into a city the user builds personally:
 
-The active application uses Supabase as the only source of truth. Tasks,
-completion rewards, city buildings, passive income, and daily limits are stored
-and calculated on the server. The client never chooses its own reward.
+```text
+task -> server reward -> XP + gold -> free city building
+```
+
+The Flutter client owns presentation and interaction. Supabase remains the
+authority for task completion, rewards, balance, unlocks, map bounds, building
+collisions, and persistence.
+
+## Foundation included
+
+- Russian Flutter UI with four destinations: Today, Calendar, City, Profile.
+- Easy, normal, and hard tasks with fixed visible reward expectations.
+- Task title, description, category, scheduled day, optional deadline, edit,
+  reschedule, delete, completion, loading, empty, and error states.
+- Server-owned XP, level, gold, completion history, and immutable reward ledger.
+- Optional AI verification data model; ordinary completion has no OpenAI
+  dependency. The final evidence-upload UI is deliberately deferred.
+- Isometric city with pan/zoom, explicit edit mode, hidden-grid snapping,
+  footprint-aware preview, rotation, overlap/bounds checks, server purchase,
+  move, coordinate restore, and base-coordinate depth sorting.
+- Seven initial building definitions: Town Hall, House, Library, Workshop,
+  Market, Tower, and Garden.
+- Anonymous first launch. Permanent account linking remains a release-roadmap
+  item; the profile screen labels guest state explicitly.
+
+Product and implementation decisions are recorded in
+[`docs/task_empire_2_foundation.md`](docs/task_empire_2_foundation.md). The
+working visual language is recorded in
+[`docs/design_system.md`](docs/design_system.md), and remaining work is tracked
+in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Requirements
 
@@ -13,7 +39,10 @@ and calculated on the server. The client never chooses its own reward.
 - Dart 3.9 or newer
 - Supabase CLI and Docker for local backend development
 - A Supabase project with Anonymous Sign-Ins enabled
-- An OpenAI API model that supports the Responses API and structured outputs
+- Deno for Edge Function checks
+
+OpenAI credentials are needed only when exercising the optional AI completion
+path.
 
 ## Local backend
 
@@ -25,23 +54,29 @@ supabase db reset
 supabase status
 ```
 
-Copy `supabase/.env.example` to `supabase/.env.local`, provide the OpenAI
-settings, and serve the secured completion function:
+Run the v2 transactional security/economy smoke test with the database URL from
+`supabase status`:
 
 ```powershell
-supabase functions serve complete_task_secure --env-file supabase/.env.local
+psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 `
+  -f supabase/tests/task_empire_2_foundation_smoke.sql
 ```
 
-The local `supabase/config.toml` enables anonymous sign-ins. Enable the same
-authentication provider in the Supabase dashboard before deploying.
+For optional AI verification, copy `supabase/.env.example` to an ignored local
+environment file, provide the OpenAI settings, and serve the function:
+
+```powershell
+supabase functions serve complete_task_secure `
+  --env-file supabase/.env.local
+```
 
 ## Run Flutter
 
-Use the API URL and publishable/anonymous key printed by `supabase status`:
+Use the local API URL and publishable key printed by `supabase status`:
 
 ```powershell
 flutter pub get
-flutter run -d chrome `
+flutter run -d edge `
   --dart-define=SUPABASE_URL=http://127.0.0.1:54321 `
   --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_LOCAL_ANON_KEY
 ```
@@ -49,23 +84,11 @@ flutter run -d chrome `
 Production URLs must use HTTPS. Plain HTTP is accepted only for localhost and
 loopback addresses.
 
-## Deploy
-
-Apply migrations before deploying the matching Edge Function:
+The backend-free visual fixture is available through:
 
 ```powershell
-supabase db push
-supabase secrets set OPENAI_API_KEY=YOUR_KEY OPENAI_MODEL=YOUR_MODEL_ID
-supabase functions deploy complete_task_secure
+flutter run -d edge -t tool/design_preview.dart
 ```
-
-The completion flow reserves a task before calling OpenAI. One user can start at
-most 30 assessments per UTC day, and only the request holding the reservation
-can award gold. Failed model calls release the reservation.
-
-There is intentionally no paid store in the current build. Store products must
-not be reintroduced until App Store or Google Play transactions are verified by
-a trusted backend.
 
 ## Quality checks
 
@@ -78,16 +101,27 @@ deno test supabase/functions/complete_task_secure/index_test.ts
 supabase db lint --local --fail-on error
 ```
 
-Flutter unit tests use repository interfaces and do not require a live
-Supabase project. Database migrations and the Edge Function are checked
-separately in CI.
+Flutter unit and widget tests use repository interfaces and do not require a
+live Supabase project. Database authority, RLS isolation, reward idempotency,
+building overlap, bounds, debit, and move invariants are checked separately by
+the SQL smoke test.
 
-## Blender city assets
+## Deploy
 
-The city scene supports dragging, pinch zoom, mouse-wheel zoom, camera
-recentering, depth sorting, and transparent Blender renders. Until a matching
-sprite exists, the application keeps using its vector fallback building.
+Apply migrations before deploying the matching Edge Function:
 
-Follow [docs/blender_asset_pipeline.md](docs/blender_asset_pipeline.md) to
-create and export the first building. Blender renders placed in
-`assets/city/buildings` are detected automatically.
+```powershell
+supabase db push
+supabase secrets set OPENAI_API_KEY=YOUR_KEY OPENAI_MODEL=YOUR_MODEL_ID
+supabase functions deploy complete_task_secure
+```
+
+Deploy to a disposable or staging project first. The v2 migration preserves the
+legacy task and building data while moving active Flutter flows to the new RPCs.
+
+## Blender assets
+
+The city renders vector fallbacks until a matching transparent WebP/PNG asset
+exists. All assets must share camera, light, scale, origin, and footprint rules.
+Approve Town Hall levels I–III before mass-producing the rest of the catalog.
+See [`docs/blender_asset_pipeline.md`](docs/blender_asset_pipeline.md).

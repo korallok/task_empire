@@ -1,10 +1,11 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:task_empire/features/city/domain/city_building.dart';
 
-/// Rendering metadata shared by the Flutter city scene and Blender exports.
+/// Sprite metadata shared by the scene and the Blender export convention.
 final class CityBuildingArtSpec {
   const CityBuildingArtSpec({
     required this.key,
@@ -15,11 +16,7 @@ final class CityBuildingArtSpec {
 
   final String key;
   final List<String> candidateAssetPaths;
-
-  /// Width of the square transparent render relative to an isometric tile.
   final double renderWidthInTiles;
-
-  /// Point inside the square render that must land on the tile centre.
   final Offset pivot;
 }
 
@@ -27,25 +24,31 @@ abstract final class CityBuildingArt {
   static const assetRoot = 'assets/city/buildings';
 
   static CityBuildingArtSpec forBuilding(CityBuilding building) {
-    final stem =
-        '${building.type.databaseValue}_level_${building.level.clamp(1, 99)}';
+    return forDefinition(building.definition);
+  }
+
+  static CityBuildingArtSpec forDefinition(BuildingDefinition definition) {
+    final stem = '${definition.visualCode}_level_${definition.level}';
+    final paths = <String>[
+      definition.sprite,
+      '$assetRoot/$stem.webp',
+      '$assetRoot/$stem.png',
+      'assets/city/$stem.webp',
+      'assets/city/$stem.png',
+    ];
     return CityBuildingArtSpec(
-      key: stem,
-      candidateAssetPaths: ['$assetRoot/$stem.webp', '$assetRoot/$stem.png'],
-      renderWidthInTiles: switch (building.type) {
-        CityBuildingType.townHall => 2.55,
-        CityBuildingType.market => 2.25,
-      },
-      pivot: switch (building.type) {
-        CityBuildingType.townHall => const Offset(0.5, 0.78),
-        CityBuildingType.market => const Offset(0.5, 0.76),
-      },
+      key: '${definition.code}:${definition.level}:${definition.sprite}',
+      candidateAssetPaths: List.unmodifiable(paths.toSet()),
+      renderWidthInTiles:
+          math.max(definition.footprintWidth, definition.footprintHeight) + 1.2,
+      pivot: const Offset(0.5, 0.78),
     );
   }
 
   static Future<Map<String, ui.Image>> loadAvailableSprites({
     required AssetBundle bundle,
     required Iterable<CityBuilding> buildings,
+    Iterable<BuildingDefinition> additionalDefinitions = const [],
   }) async {
     final manifest = await AssetManifest.loadFromAssetBundle(bundle);
     final availableAssets = manifest.listAssets().toSet();
@@ -54,12 +57,20 @@ abstract final class CityBuildingArt {
       final spec = forBuilding(building);
       specs[spec.key] = spec;
     }
+    for (final definition in additionalDefinitions) {
+      final spec = forDefinition(definition);
+      specs[spec.key] = spec;
+    }
 
     final sprites = <String, ui.Image>{};
     for (final spec in specs.values) {
-      final path = spec.candidateAssetPaths
-          .where(availableAssets.contains)
-          .firstOrNull;
+      String? path;
+      for (final candidate in spec.candidateAssetPaths) {
+        if (availableAssets.contains(candidate)) {
+          path = candidate;
+          break;
+        }
+      }
       if (path == null) continue;
 
       try {
@@ -76,6 +87,6 @@ abstract final class CityBuildingArt {
         debugPrint('Could not load city sprite "$path": $error');
       }
     }
-    return sprites;
+    return Map.unmodifiable(sprites);
   }
 }

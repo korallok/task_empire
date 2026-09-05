@@ -6,31 +6,41 @@ import 'package:task_empire/features/city/presentation/isometric_city_view.dart'
 import 'package:task_empire/features/city/presentation/isometric_projection.dart';
 
 void main() {
-  test('isometric projection maps every tile centre back to the same tile', () {
-    const projection = IsometricProjection(
-      tileWidth: 104,
-      tileHeight: 52,
-      origin: Offset(520, 224),
-    );
+  test(
+    'isometric projection maps every rectangular-map tile back to itself',
+    () {
+      const projection = IsometricProjection(
+        tileWidth: 104,
+        tileHeight: 52,
+        origin: Offset(520, 224),
+        width: 10,
+        height: 6,
+      );
 
-    for (var x = 0; x < CityTileCoordinate.gridSize; x++) {
-      for (var y = 0; y < CityTileCoordinate.gridSize; y++) {
-        final tile = CityTileCoordinate(x, y);
-        expect(projection.tileAt(projection.tileCenter(x, y)), tile);
+      for (var x = 0; x < projection.width; x++) {
+        for (var y = 0; y < projection.height; y++) {
+          final tile = CityTileCoordinate(x, y);
+          expect(projection.tileAt(projection.tileCenter(x, y)), tile);
+        }
       }
-    }
-  });
+    },
+  );
 
   test('building art follows Blender export naming conventions', () {
     final art = CityBuildingArt.forBuilding(_market);
+    final legacyArt = CityBuildingArt.forDefinition(_legacyMarketDefinition);
 
-    expect(art.key, 'market_level_1');
+    expect(art.key, contains('market:1'));
     expect(
       art.candidateAssetPaths,
       contains('assets/city/buildings/market_level_1.png'),
     );
     expect(art.pivot.dx, inInclusiveRange(0, 1));
     expect(art.pivot.dy, inInclusiveRange(0, 1));
+    expect(
+      legacyArt.candidateAssetPaths,
+      contains('assets/city/buildings/market_level_3.png'),
+    );
   });
 
   testWidgets('city scene can be panned and returned to its centre', (
@@ -75,13 +85,35 @@ void main() {
   });
 }
 
+const _marketDefinition = BuildingDefinition(
+  id: 'definition-market',
+  code: 'market',
+  name: 'Рынок',
+  level: 1,
+  price: 75,
+  requiredPlayerLevel: 1,
+  sprite: 'assets/city/buildings/market_level_1.webp',
+  footprintWidth: 3,
+  footprintHeight: 3,
+  prosperity: 35,
+);
+
 const _market = CityBuilding(
   id: 'market-1',
-  type: CityBuildingType.market,
-  level: 1,
-  tile: CityTileCoordinate(4, 4),
-  incomePerHour: 5,
-  prosperity: 15,
-  upgradeCost: 350,
-  maxLevel: 3,
+  definition: _marketDefinition,
+  position: CityTileCoordinate(4, 4),
+  rotation: CityBuildingRotation.north,
+);
+
+const _legacyMarketDefinition = BuildingDefinition(
+  id: 'definition-legacy-market-3',
+  code: 'legacy_market',
+  name: 'Рынок',
+  level: 3,
+  price: 0,
+  requiredPlayerLevel: 1,
+  sprite: 'assets/city/buildings/market_level_3.webp',
+  footprintWidth: 1,
+  footprintHeight: 1,
+  prosperity: 45,
 );
