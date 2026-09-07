@@ -4,10 +4,22 @@
 .packages
 build/
 coverage/
-supabase/.env
-supabase/.env.*
+# Local environment files at any directory depth.
+.env
+.env.*
 !.env.example
 !supabase/.env.example
+# Private credentials and application signing material.
+credentials.json
+service-account*.json
+service_account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+key.properties
 *.iml
 .idea/
 .vscode/
